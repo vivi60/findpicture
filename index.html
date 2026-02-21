@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A의 감옥
+    </title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Press+Start+2P&display=swap');
+
+        body {
+            background-color: #0a0a0a;
+            color: #eee;
+            font-family: 'Black Han Sans', sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; margin: 0; overflow-x: hidden; user-select: none;
+        }
+
+        /* 헤더 및 게이지 */
+        h1 { text-shadow: 0 0 10px #ff0000; color: #ff4444; margin: 10px 0; }
+        .main-container { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+
+        /* 게임 영역: 좌우 이미지 */
+        #game-area {
+            position: relative; background: #111; padding: 15px;
+            border: 3px solid #444; border-radius: 10px; display: flex; flex-direction: column; align-items: center;
+        }
+        .image-wrapper {
+            position: relative; display: flex; gap: 10px; cursor: crosshair;
+        }
+        canvas {
+            background: #222; border: 2px solid #333; max-width: 500px; height: auto;
+        }
+
+        /* 시간 게이지 (상단 가로형) */
+        #time-bar-container {
+            width: 100%; height: 20px; background: #222; border: 1px solid #555; margin-bottom: 10px; position: relative;
+        }
+        #time-fill {
+            width: 100%; height: 100%; background: linear-gradient(to right, #ff4444, #ffcc00); transition: width 0.1s linear;
+        }
+
+        /* 우측 정보 패널 */
+        .info-panel {
+            width: 260px; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333;
+            display: flex; flex-direction: column; gap: 15px;
+        }
+        .score-display { font-family: 'Press Start 2P'; color: #00ff00; font-size: 1.5rem; text-align: center; }
+        .total-val { color: #ffcc00; font-family: 'Press Start 2P'; font-size: 0.8rem; text-align: center; }
+        
+        /* 기여도 바 */
+        .goal-bar-bg { width: 100%; height: 15px; background: #333; border-radius: 10px; overflow: hidden; margin-top: 5px; border: 1px solid #555; }
+        #global-progress { width: 0%; height: 100%; background: #ffcc00; transition: width 1s; }
+
+        /* 버튼 및 입력창 */
+        input[type="text"] { width: 100%; padding: 8px; background: #222; border: 1px solid #444; color: white; text-align: center; box-sizing: border-box; }
+        .btn {
+            width: 100%; padding: 15px; color: white; border: none; border-radius: 4px; cursor: pointer;
+            font-family: inherit; font-size: 1.1rem; background: #8b0000; box-shadow: 0 4px 0 #500;
+        }
+        .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #500; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* 결과 창 */
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); display: none; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100;
+        }
+        
+        .rank-list { list-style: none; padding: 0; font-size: 0.8rem; }
+        .rank-list li { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding: 5px 0; }
+
+        /* 피드백 효과 */
+        .hit-effect { position: absolute; border: 3px solid #00ff00; border-radius: 50%; pointer-events: none; transform: translate(-50%, -50%); animation: flash 0.5s; }
+        @keyframes flash { from { opacity: 1; transform: translate(-50%, -50%) scale(0.5); } to { opacity: 0; transform: translate(-50%, -50%) scale(1.5); } }
+    
+    /* 클릭 피드백 스타일 */
+.feedback-mark {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    pointer-events: none; /* 클릭 방해 금지 */
+    transform: translate(-50%, -50%); /* 중심점 맞추기 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 24px;
+    z-index: 10;
+    animation: popIn 0.3s ease-out;
+}
+
+@keyframes popIn {
+    0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+    80% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+    
+    /* 베이스캠프와 동일한 소형 버튼 스타일 */
+.btn-small { 
+    padding: 5px 10px; 
+    font-size: 0.8rem; 
+    background: #8b0000; 
+    width: 40%; /* 입력창 너비와 맞춤 */
+}
+    </style>
+</head>
+<body>
+
+  
+    <div class="main-container">
+        <div id="game-area">
+            <div id="time-bar-container">
+                <div id="time-fill"></div>
+            </div>
+            <div class="image-wrapper" id="click-area">
+                <canvas id="canvas-orig"></canvas>
+                <canvas id="canvas-diff"></canvas>
+                </div>
+            <p style="font-size: 0.8rem; color: #888;">왼쪽과 오른쪽의 다른 부분을 찾으세요! (오답 시 감점)</p>
+            
+            <div id="overlay">
+                <h2 id="result-text" style="font-size: 2rem;">TIME OVER</h2>
+                <button class="btn" onclick="startSequence()" style="width: 200px;">다시 도전</button>
+            </div>
+        </div>
+
+        <div class="info-panel">
+            <div class="info-box">
+                <div style="font-size: 0.8rem; color:#aaa;">나의 현재 점수</div>
+                <div id="current-score" class="score-display">0</div>
+            </div>
+
+            <div class="info-box">
+                <div style="font-size: 0.8rem; color:#aaa;">🌍 전체 탈출 게이지</div>
+                <div class="total-val" id="global-score-text">0 / 25,000</div>
+                <div class="goal-bar-bg">
+                    <div id="global-progress"></div>
+                </div>
+            </div>
+
+            <div class="info-box">
+    <div style="display: flex; flex-direction: column; gap: 5px; align-items: center;">
+        <input type="text" id="username-input" placeholder="러너 이름 입력" maxlength="8">
+        <button class="btn btn-small" id="btn-save-name" onclick="updateName()">이름 저장</button>
+    </div>
+</div>
+            <div class="info-box">
+                <div style="font-size: 0.8rem; color:#aaa; margin-bottom:10px;">🏆 실시간 랭킹 (Top 5)</div>
+                <ul id="leaderboard" class="rank-list"><li>로딩 중...</li></ul>
+            </div>
+            
+            <button id="btn-start" class="btn" onclick="startSequence()">시작</button>
+            <button id="btn-quit" class="btn" onclick="quitGame()" style="display: none;">중단하기</button>
+        </div>
+        
+    </div>
+
+    <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+
+    // 1. Firebase 설정
+    const firebaseConfig = {
+        apiKey: "AIzaSyA2zLCI08iXD5eV-pC7Zav9SodGwNyHsxE",
+        authDomain: "basecamp-1254b.firebaseapp.com",
+        projectId: "basecamp-1254b",
+        databaseURL: "https://basecamp-1254b-default-rtdb.firebaseio.com",
+        storageBucket: "basecamp-1254b.firebasestorage.app",
+        messagingSenderId: "587183782376",
+        appId: "1:587183782376:web:16cbbbface1cf8f0d18c5d"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // 2. 게임 설정
+    const GAME_TIME = 30;
+    const TARGET_TOTAL_SCORE = 25000;
+    const HIT_SCORE = 100;
+    const MISS_PENALTY = 30;
+    
+   // 여기에 넣으세요!
+const stages = [
+    {
+        orig: 'https://i.ibb.co/7JgQrP3F/1.png', // 첫 번째 스테이지 원본
+        diff: 'https://i.ibb.co/Ldg7FZ3X/1.png', // 첫 번째 스테이지 틀린그림
+        answers: [
+            {x: 545, y: 167, r: 25},
+            {x: 392, y: 202, r: 25},
+            {x: 236, y: 239, r: 25},
+            {x: 264, y: 127, r: 25},
+            {x: 117, y: 49, r: 25}
+        ]
+    },
+    {
+        orig: 'https://i.ibb.co/PG8WZM7t/2.png',
+        diff: 'https://i.ibb.co/VWdK4F1F/2.png',
+        answers: [
+            {x: 118, y: 160, r: 25},
+            {x: 33, y: 297, r: 25},
+            {x: 255, y: 88, r: 25},
+            {x: 394, y: 156, r: 25},
+            {x: 325, y: 242, r: 25},
+            {x: 561, y: 130, r: 25},
+            {x: 264, y: 293, r: 35}
+        ]
+    }
+];
+
+    let currentStageIndex = 0; // 현재 스테이지 번호
+
+    let userId = localStorage.getItem('escape_user_id') || 'runner_' + Date.now();
+    localStorage.setItem('escape_user_id', userId);
+    let userName = localStorage.getItem('escape_user_name') || "러너_" + Math.floor(Math.random()*1000);
+    document.getElementById('username-input').value = userName;
+
+    let currentScore = 0;
+    let timeLeft = GAME_TIME;
+    let isPlaying = false;
+    let timerId;
+    let foundIndices = new Set();
+
+    const canvOrig = document.getElementById('canvas-orig');
+    const canvDiff = document.getElementById('canvas-diff');
+    
+    
+    // 스테이지 로드 함수
+function loadStage(index) {
+    if (index >= stages.length) {
+        alert("모든 구역의 오류를 발견했습니다.");
+        stopGame();
+        return;
+    }
+
+    document.querySelectorAll('.feedback-mark').forEach(m => m.remove());
+    foundIndices.clear();
+
+    const stage = stages[index];
+    const imgO = new Image();
+    const imgD = new Image();
+    imgO.crossOrigin = "Anonymous";
+    imgD.crossOrigin = "Anonymous";
+
+    let loadedCount = 0;
+    const onImgLoad = () => {
+        loadedCount++;
+        if(loadedCount === 2) {
+            canvOrig.width = canvDiff.width = imgD.width;
+            canvOrig.height = canvDiff.height = imgD.height;
+            canvOrig.getContext('2d').drawImage(imgO, 0, 0);
+            canvDiff.getContext('2d').drawImage(imgD, 0, 0);
+        }
+    };
+
+    imgO.onload = onImgLoad;
+    imgD.onload = onImgLoad;
+
+    // src 설정은 반드시 onload 이벤트 등록 후에 해야 합니다!
+    imgO.src = stage.orig;
+    imgD.src = stage.diff;
+}
+
+    // 3. 게임 로직
+window.startSequence = () => {
+    // 1. 이름 확인
+    const inputName = document.getElementById('username-input').value.trim();
+    if(!inputName) return alert("이름을 입력하고 저장 버튼을 눌러주세요!");
+    
+    // 2. 초기화 및 상태 설정
+    if(isPlaying) return;
+    
+    userName = inputName;
+    localStorage.setItem('escape_user_name', userName);
+    document.querySelectorAll('.feedback-mark').forEach(m => m.remove());
+
+    isPlaying = true;
+    currentScore = 0;
+    timeLeft = GAME_TIME;
+    currentStageIndex = 0; // 스테이지 초기화
+    foundIndices.clear();
+
+    // 3. UI 업데이트
+    document.getElementById('current-score').innerText = "0";
+    document.getElementById('overlay').style.display = 'none';
+    document.getElementById('btn-start').disabled = true;
+    document.getElementById('btn-quit').style.display = 'block';
+
+    // 4. 첫 스테이지 로드
+    loadStage(currentStageIndex);
+
+    // 5. 타이머 시작
+    timerId = setInterval(() => {
+        timeLeft -= 0.1;
+        document.getElementById('time-fill').style.width = (timeLeft / GAME_TIME) * 100 + "%";
+        if(timeLeft <= 0) stopGame();
+    }, 100);
+};
+
+    function stopGame() {
+        isPlaying = false;
+        clearInterval(timerId);
+        document.getElementById('overlay').style.display = 'flex';
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-quit').style.display = 'none';
+        saveScore(currentScore);
+    }
+
+    // 3. 게임 로직 - 클릭 감지 섹션 (이 부분을 통째로 교체하세요)
+canvDiff.addEventListener('mousedown', (e) => {
+    if(!isPlaying) return;
+    
+    // 1. 클릭한 위치의 좌표 계산 (캔버스 크기에 맞게 보정)
+    const rect = canvDiff.getBoundingClientRect();
+    const scaleX = canvDiff.width / rect.width;
+    const scaleY = canvDiff.height / rect.height;
+    
+    // 로직용 좌표 (이미지 해상도 기준)
+    const logicX = (e.clientX - rect.left) * scaleX;
+    const logicY = (e.clientY - rect.top) * scaleY;
+
+    // 화면 표시용 좌표 (피드백 마크를 찍을 위치)
+    const wrapperRect = document.getElementById('click-area').getBoundingClientRect();
+    const displayX = e.clientX - wrapperRect.left;
+    const displayY = e.clientY - wrapperRect.top;
+
+    // 2. 현재 스테이지의 정답 배열 가져오기
+    const currentAnswers = stages[currentStageIndex].answers; 
+    let hitIndex = -1;
+
+    // 3. 정답 판정 (클릭한 곳 근처에 정답이 있는지 확인)
+    currentAnswers.forEach((ans, index) => {
+        const dist = Math.sqrt((logicX - ans.x)**2 + (logicY - ans.y)**2);
+        if(dist < ans.r && !foundIndices.has(index)) {
+            hitIndex = index;
+        }
+    });
+
+    // 4. 판정 결과에 따른 동작
+    if(hitIndex !== -1) {
+        foundIndices.add(hitIndex); // 찾은 목록에 추가
+        currentScore += HIT_SCORE; // 점수 추가
+        showFeedback(displayX, displayY, true); // 초록색 'O' 표시
+        
+        // [핵심] 현재 스테이지의 모든 정답을 다 찾았는지 확인
+        if(foundIndices.size === currentAnswers.length) {
+            setTimeout(() => {
+                alert(`Stage ${currentStageIndex + 1} 클리어! 다음 구역으로...`);
+                currentStageIndex++; // 다음 스테이지 번호로 변경
+                loadStage(currentStageIndex); // 다음 이미지 로드 함수 호출
+            }, 500);
+        }
+    } else {
+        // 틀렸을 때
+        currentScore = Math.max(0, currentScore - MISS_PENALTY); // 점수 감점
+        showFeedback(displayX, displayY, false); // 빨간색 'X' 표시
+    }
+
+
+    // 5. 화면의 현재 점수 텍스트 업데이트
+    document.getElementById('current-score').innerText = currentScore;
+});
+
+    function showFeedback(x, y, isHit) {
+        const mark = document.createElement('div');
+        mark.className = 'feedback-mark';
+        mark.style.left = x + 'px';
+        mark.style.top = y + 'px';
+
+        if (isHit) {
+            mark.style.color = '#00ff00';
+            mark.style.border = '3px solid #00ff00';
+            mark.style.borderRadius = '50%';
+            mark.innerHTML = 'O'; 
+        } else {
+            mark.style.color = '#ff0000';
+            mark.innerHTML = 'X';
+            setTimeout(() => {
+                mark.style.transition = 'opacity 0.5s';
+                mark.style.opacity = '0';
+                setTimeout(() => mark.remove(), 500);
+            }, 1000);
+        }
+        document.getElementById('click-area').appendChild(mark);
+    }
+
+    // 4. Firebase 데이터 연동 함수들
+    async function saveScore(score) {
+        try {
+            const docRef = doc(db, "escape_scores", userId);
+            const snap = await getDoc(docRef);
+            let high = 0;
+            if(snap.exists()) high = snap.data().score || 0;
+            if(score > high) {
+                await setDoc(docRef, { name: userName, score: score, date: new Date().toISOString() });
+            }
+            loadLeaderboard();
+            updateGlobalTotal();
+        } catch(e) { console.error(e); }
+    }
+
+    async function loadLeaderboard() {
+        const q = query(collection(db, "escape_scores"), orderBy("score", "desc"), limit(5));
+        const snap = await getDocs(q);
+        const list = document.getElementById('leaderboard');
+        list.innerHTML = "";
+        snap.forEach(d => {
+            const data = d.data();
+            list.innerHTML += `<li><span>${data.name}</span><strong>${data.score}</strong></li>`;
+        });
+    }
+
+    async function updateGlobalTotal() {
+        const snap = await getDocs(collection(db, "escape_scores"));
+        let total = 0;
+        snap.forEach(d => total += (d.data().score || 0));
+        document.getElementById('global-score-text').innerText = `${total.toLocaleString()} / ${TARGET_TOTAL_SCORE.toLocaleString()}`;
+        let pct = (total / TARGET_TOTAL_SCORE) * 100;
+        document.getElementById('global-progress').style.width = Math.min(pct, 100) + "%";
+        if(total >= TARGET_TOTAL_SCORE) {
+            document.querySelector('h1').innerText = "탈출하는중...";
+            document.querySelector('h1').style.color = "#00ff00";
+        }
+    }
+
+    loadLeaderboard();
+    updateGlobalTotal();
+// [추가] 페이지 로드 시 첫 번째 스테이지 이미지를 미리 보여줍니다.
+    loadStage(0);
+
+
+    // [추가] 이름 저장 함수
+window.updateName = async () => {
+    const newName = document.getElementById('username-input').value.trim();
+    if(!newName) return alert("이름을 입력하세요!");
+    
+    userName = newName;
+    localStorage.setItem('escape_user_name', userName); // 방탈출용 로컬스토리지 키
+    
+    // DB에 즉시 반영하고 싶다면 (선택사항)
+    try {
+        const docRef = doc(db, "escape_scores", userId);
+        await setDoc(docRef, { name: userName }, { merge: true });
+        alert("러너 이름 저장 완료!");
+    } catch(e) {
+        console.error("이름 저장 오류:", e);
+        alert("이름 저장 성공 (로컬)");
+    }
+}
+// [추가] 게임 중단 함수
+window.quitGame = () => {
+    if (!confirm("정말 포기하시겠습니까? 현재 점수는 저장되지 않습니다.")) return;
+
+    isPlaying = false;
+    clearInterval(timerId); // 타이머 중지
+    
+    // UI 초기화
+    document.getElementById('overlay').style.display = 'none';
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-quit').style.display = 'none'; // 중단 버튼 숨기기
+    document.getElementById('time-fill').style.width = "100%";
+    document.getElementById('current-score').innerText = "0";
+    
+    // 클릭 표시 제거
+    document.querySelectorAll('.feedback-mark').forEach(m => m.remove());
+    
+    alert("탈출을 포기했습니다.");
+};
+
+
+
+ // [임시 코드] 좌표 확인용 // [임시 코드] 좌표 확인용 // [임시 코드] 좌표 확인용 // [임시 코드] 좌표 확인용
+ // [임시 코드] 좌표 확인용 // [임시 코드] 좌표 확인용 // [임시 코드] 좌표 확인용
+ // [임시 코드] 좌표 확인용 // [임시 코드] 좌표 확인용 // [임시 코드] 좌표 확인용
+         // [임시 코드] 좌표 확인용 // [임시 코드] 좌표 확인용 // [임시 코드] 좌표 확인용
+        // [임시 코드] 좌표 확인용
+    //canvDiff.addEventListener('mousedown', (e) => {
+    //const rect = canvDiff.getBoundingClientRect();
+    //const scaleX = canvDiff.width / rect.width;
+    //const scaleY = canvDiff.height / rect.height;
+    //const x = Math.round((e.clientX - rect.left) * scaleX);
+    //const y = Math.round((e.clientY - rect.top) * scaleY);
+    
+    //console.log(`현재 클릭 좌표: {x: ${x}, y: ${y}, r: 25}`);
+    //alert(`좌표: x=${x}, y=${y}`); // 화면에 바로 띄우고 싶을 때
+//});
+
+    </script>
+</body>
+</html>
